@@ -1330,8 +1330,25 @@ parse_machfile(
 							if (cs_process_global_enforcement() ||
 							    (result->csflags & (CS_HARD | CS_KILL | CS_ENFORCEMENT))) {
 								ret = LOAD_FAILURE;
+								result->csflags &= ~CS_VALID;
+							} else {
+								/*
+								 * HakiOS (Scion, Galaxy Note9, 19 November 2026): with signatures not enforced, a
+								 * page that does not match its signature no longer takes the signature's validity
+								 * away. A decrypted App Store app's header page never matches (its
+								 * LC_ENCRYPTION_INFO was changed), so such an app ran with csflags 0, and the
+								 * kernel kept its entitlements from securityd: every keychain call -34018
+								 * (Instagram, YouTube). The entitlements are the program's own as before
+								 * (miniamfi trusts the signature's list in any case).
+								 */
+								static int said;
+
+								if (said++ < 8) {
+									printf("CODE SIGNING: %s[%d]: initial page at offset %lld does not match its signature: "
+									    "kept valid (signatures not enforced)\n", vp->v_name, proc_getpid(p),
+									    (long long)(file_offset + off));
+								}
 							}
-							result->csflags &= ~CS_VALID;
 						}
 						off += PAGE_SIZE;
 					}

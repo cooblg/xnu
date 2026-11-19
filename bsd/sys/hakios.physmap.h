@@ -25,4 +25,10 @@ extern "C"
 #endif
 vm_offset_t hakios_physmap_cached(uint64_t pa, uint64_t bytes);
 
+/* the same memory write-back cached (the caller invalidates what a device wrote before reading it); 0 if it cannot be mapped */
+#ifdef __cplusplus
+extern "C"
+#endif
+vm_offset_t hakios_physmap_cached(uint64_t pa, uint64_t bytes);
+
 #endif /* _SYS_HAKIOS_PHYSMAP_H_ */

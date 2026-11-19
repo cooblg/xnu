@@ -296,6 +296,25 @@ cs_invalid_page(addr64_t vaddr, boolean_t *cs_killed)
 		retval = 1;
 	}
 
+	/*
+	 * HakiOS (Scion, 19 November 2026): with signatures not enforced and neither CS_KILL nor CS_HARD, a page that does not
+	 * match its signature is allowed and the process stays valid (see mach_loader.c's initial pages): a decrypted app's
+	 * code pages never match, and losing CS_VALID loses its entitlements.
+	 */
+	if (!cs_process_global_enforcement() && (flags & (CS_KILL | CS_HARD)) == 0 && (flags & CS_VALID)) {
+		static int said;
+
+		proc_unlock(p);
+		if (said++ < 8) {
+			printf("CODE SIGNING: cs_invalid_page(0x%llx): p=%d[%s]: allowed, kept valid (signatures not enforced)\n",
+			    vaddr, proc_getpid(p), p->p_comm);
+		}
+		if (cs_killed) {
+			*cs_killed = FALSE;
+		}
+		return 0;
+	}
+
 	/* CS_HARD means fail the mapping operation so the process stays valid. */
 	if (flags & CS_HARD) {
 		retval = 1;
