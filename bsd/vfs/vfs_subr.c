@@ -6356,26 +6356,21 @@ vnode_drain(vnode_t vp)
 
 	while (vp->v_iocount > 1) {
 		/*
-		 * HakiOS: at shutdown, a vnode someone holds and will not let go (the Note9's slide to power off: a device of
-		 * /dev, held by a thread waiting in it, and the unmount waited for ever): said once after 3 s, with what it
-		 * is, then let go as -no_vnode_drain does it, when no writes are outstanding.
+		 * HakiOS: at shutdown, a vnode someone holds and will not let go: said once after 3 s, with what it is. Not let
+		 * go: whoever holds it gives it back later, and vnode_put() then panics (iocount < 1; the Note9's first try, the
+		 * root's APFS volume holding /dev/ufs_SYSTEM). The shutdown watch ends a shutdown that stays stuck.
 		 */
 		if (vfs_unmountall_started && !bootarg_no_vnode_drain) {
 			struct timespec ts = {.tv_sec = 1, .tv_nsec = 0};
 			int error = msleep(&vp->v_iocount, &vp->v_lock, PVFS, "vnode_drain_at_shutdown", &ts);
 
-			if (vp->v_iocount > 1 && error == EWOULDBLOCK && ++hakios_waited >= 3) {
-				if (hakios_waited == 3 || vp->v_numoutput == 0)
+			if (vp->v_iocount > 1 && error == EWOULDBLOCK && ++hakios_waited == 3) {
 				printf("vnode_drain: at shutdown, %s (type %d, device %d,%d) held %u s: %d iocounts, %d uses, "
 				    "%d writes out%s\n", vp->v_name ? vp->v_name : "(no name)", vp->v_type,
 				    (vp->v_type == VCHR || vp->v_type == VBLK) ? major(vp->v_rdev) : -1,
 				    (vp->v_type == VCHR || vp->v_type == VBLK) ? minor(vp->v_rdev) : -1, hakios_waited,
 				    vp->v_iocount, vp->v_usecount, vp->v_numoutput,
-				    vp->v_numoutput == 0 ? ": let go" : ": still waited for");
-				if (vp->v_numoutput == 0) {
-					vp->v_iocount = 1;
-					break;
-				}
+				    ": waited for");
 			}
 			continue;
 		}

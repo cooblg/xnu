@@ -1288,11 +1288,17 @@ apfs_mount(mount_t mp, vnode_t devvp, user_addr_t data, vfs_context_t ctx)
 		}
 		if (error == 0) {
 			/*
-			 * The iocount from the lookup is kept for as long as the volume is
-			 * mounted; apfs_unmount() closes and drops it.
+			 * The device is held by a use count for as long as the volume is mounted
+			 * (vnode_ref, as a mount of a block device holds it); apfs_unmount() closes and
+			 * lets go of it. Held by the lookup's iocount instead, it hung every shutdown: /dev
+			 * is unmounted before / and its vflush drained the device for the iocount the
+			 * root's volume gives back only when it is unmounted itself (the Note9's slide to
+			 * power off).
 			 */
 			error = apfs_mount_common(mp, vp, ctx, container, volume);
 			if (error == 0) {
+				(void)vnode_ref(vp);
+				vnode_put(vp);
 				APFS_MP(mp)->am_owns_devvp = true;
 				APFS_MP(mp)->am_shares_devvp = shared;
 				/* what mount(8) and df show as where it came from */
@@ -1314,6 +1320,7 @@ apfs_mount(mount_t mp, vnode_t devvp, user_addr_t data, vfs_context_t ctx)
 		if (error != 0) {
 			vnode_put(vp);
 		}
+		vp = NULLVP;
 	} else if (vp != NULLVP) {
 		vnode_put(vp);
 	}
@@ -1343,10 +1350,16 @@ apfs_unmount(mount_t mp, int mntflags, vfs_context_t ctx)
 	lck_mtx_unlock(&apfs_pool_lock);
 	vfs_setfsprivate(mp, NULL);
 	if (am->am_owns_devvp && am->am_devvp != NULLVP) {
-		if (!am->am_shares_devvp) {
-			(void)VNOP_CLOSE(am->am_devvp, FREAD, ctx);
+		/* (an iocount for the close; none to be had: /dev's unmount has made it an anonymous device already) */
+		if (vnode_getwithref(am->am_devvp) == 0) {
+			if (!am->am_shares_devvp) {
+				(void)VNOP_CLOSE(am->am_devvp, FREAD, ctx);
+			}
+			vnode_rele(am->am_devvp);
+			vnode_put(am->am_devvp);
+		} else {
+			vnode_rele(am->am_devvp);
 		}
-		vnode_put(am->am_devvp);
 	}
 	apfs_free_mount(am);
 	return 0;
