@@ -771,6 +771,43 @@ hakios_thread_say_stack(thread_t thread, int (*say_as)(const char *, ...))
 	}
 }
 
+/*
+ * For the shutdown watch, after the stuck thread's own stack: every waiting thread of a task other than the kernel's, its
+ * stack too (after the kill at shutdown, launchd's and whoever could not be killed: the one in a device's read or ioctl
+ * that holds the /dev vnode the unmount is draining). At most MOST of them.
+ */
+extern void proc_name(int pid, char *buf, int size);
+void hakios_threads_say_blocked(thread_t except, int (*say_as)(const char *, ...));
+void
+hakios_threads_say_blocked(thread_t except, int (*say_as)(const char *, ...))
+{
+	const unsigned MOST = 24;
+	unsigned said = 0, seen = 0;
+	thread_t thread;
+
+	lck_mtx_lock(&tasks_threads_lock);
+	queue_iterate(&threads, thread, thread_t, threads) {
+		task_t task = get_threadtask(thread);
+		char name[32] = "";
+		int pid;
+
+		if (task == kernel_task || thread == except || thread == current_thread() || (thread->state & TH_WAIT) == 0) {
+			continue;
+		}
+		seen++;
+		if (said >= MOST) {
+			continue;
+		}
+		pid = task_pid(task);
+		proc_name(pid, name, sizeof(name));
+		say_as("  %s[%d]:\n", name, pid);
+		hakios_thread_say_stack(thread, say_as);
+		said++;
+	}
+	lck_mtx_unlock(&tasks_threads_lock);
+	say_as("  (%u waiting threads of programs, %u said)\n", seen, said);
+}
+
 __attribute__((noreturn))
 void
 halt_all_cpus(boolean_t reboot)
