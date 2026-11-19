@@ -743,7 +743,6 @@ extern void hakios_exynos_halt_off(boolean_t reboot);  /* drivers/power/exynos/h
  * A blocked thread's kernel stack, for the shutdown watch (hakios.exynos_poweroff.c): its return addresses unslid (nm on
  * the unstripped kernel names them), read without faulting.
  */
-#include <kern/thread_kernel_state.h>
 void hakios_thread_say_stack(thread_t thread, int (*say_as)(const char *, ...));
 void
 hakios_thread_say_stack(thread_t thread, int (*say_as)(const char *, ...))
