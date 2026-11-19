@@ -172,6 +172,7 @@ extern lck_mtx_t vm_swap_data_lock;
 extern int vm_swapfile_create_thread_running;
 extern int vm_swapfile_gc_thread_running;
 extern uint32_t cl_sparse_push_error;
+extern void hakios_shutdown_watch(int howto);    /* drivers/power/exynos/hakios.exynos_poweroff.c (a stand-in does nothing) */
 
 int
 reboot_kernel(int howto, char *message)
@@ -189,6 +190,8 @@ reboot_kernel(int howto, char *message)
 		}
 		return EBUSY;
 	}
+	/* a shutdown that stalls (the Note9's hung in unmounting /dev): its stack said, then powered off or restarted anyway */
+	hakios_shutdown_watch(howto);
 
 	lck_mtx_lock(&vm_swap_data_lock);
 

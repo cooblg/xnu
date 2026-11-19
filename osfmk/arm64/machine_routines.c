@@ -739,6 +739,39 @@ extern void loader_exit_wanted(bool reset);    /* osfmk/arm64/loader_return.c */
 extern void hakios_adreno_stop(void);
 extern void hakios_exynos_halt_off(boolean_t reboot);  /* drivers/power/exynos/hakios.exynos_poweroff.c (halt_off=N, the Galaxy S9) */
 
+/*
+ * A blocked thread's kernel stack, for the shutdown watch (hakios.exynos_poweroff.c): its return addresses unslid (nm on
+ * the unstripped kernel names them), read without faulting.
+ */
+#include <kern/thread_kernel_state.h>
+void hakios_thread_say_stack(thread_t thread, int (*say_as)(const char *, ...));
+void
+hakios_thread_say_stack(thread_t thread, int (*say_as)(const char *, ...))
+{
+	if (thread == THREAD_NULL || thread->kernel_stack == 0) {
+		say_as("  (no kernel stack)\n");
+		return;
+	}
+	arm_kernel_saved_state_t *ks = &thread_get_kernel_state(thread)->machine.ss;
+	uintptr_t fp = ks->fp;
+
+	say_as("  thread %llu: state %#x, wait event %#lx, blocked at %#lx\n", thread_tid(thread), thread->state,
+	    (unsigned long)VM_KERNEL_UNSLIDE_OR_PERM(thread->wait_event),
+	    (unsigned long)VM_KERNEL_UNSLIDE(VM_KERNEL_STRIP_UPTR(ks->lr)));
+	for (int i = 0; i < 32 && fp != 0 && (fp & 7) == 0; i++) {
+		uintptr_t frame[2];
+
+		if (ml_nofault_copy(fp, (vm_offset_t)frame, sizeof(frame)) != sizeof(frame) || frame[1] == 0) {
+			break;
+		}
+		say_as("  #%d %#lx\n", i, (unsigned long)VM_KERNEL_UNSLIDE(VM_KERNEL_STRIP_UPTR(frame[1])));
+		if (frame[0] <= fp) {
+			break;
+		}
+		fp = frame[0];
+	}
+}
+
 __attribute__((noreturn))
 void
 halt_all_cpus(boolean_t reboot)
